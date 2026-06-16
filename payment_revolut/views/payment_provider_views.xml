@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="payment_provider_form_revolut" model="ir.ui.view">
+        <field name="name">Revolut Provider Form</field>
+        <field name="model">payment.provider</field>
+        <field name="inherit_id" ref="payment.payment_provider_form"/>
+        <field name="arch" type="xml">
+            <group name="provider_credentials" position="inside">
+                <group invisible="code != 'revolut'">
+                    <field
+                        name="revolut_secret_key"
+                        string="Secret API Key"
+                        required="code == 'revolut' and state != 'disabled'"
+                        password="True"
+                    />
+                    <field
+                        name="revolut_webhook_secret"
+                        string="Webhook Signing Secret"
+                        password="True"
+                    />
+                    <field name="revolut_webhook_id" string="Webhook ID"/>
+                    <div colspan="2">
+                        <button
+                            name="action_revolut_register_webhook"
+                            type="object"
+                            string="Register Webhook"
+                            class="btn-primary"
+                        />
+                        <button
+                            name="action_revolut_unregister_webhook"
+                            type="object"
+                            string="Delete Webhook"
+                            class="btn-secondary"
+                            invisible="not revolut_webhook_id"
+                        />
+                    </div>
+                </group>
+            </group>
+        </field>
+    </record>
+
+</odoo>

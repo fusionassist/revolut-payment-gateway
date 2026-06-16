@@ -1,0 +1,20 @@
+# External reference checkouts — their own repos / large caches, not part of this project
+/.odoo18-ref/
+/.odoo19-ref/
+/.lovable-repo/
+/.docs-cache/
+
+# Local tooling / editor settings
+/.claude/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Local test scaffolding artefacts
+/listing-raw/
+
+# OS cruft
+Thumbs.db
+.DS_Store

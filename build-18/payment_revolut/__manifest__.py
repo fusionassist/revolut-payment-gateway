@@ -1,0 +1,26 @@
+# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+
+{
+    'name': "Revolut Payment Gateway",
+    'version': '18.0.1.0.0',
+    'category': 'Accounting/Payment Providers',
+    'sequence': 350,
+    'summary': "Accept payments via Revolut hosted checkout (cards and Revolut Pay).",
+    'description': " ",  # Non-empty string to avoid loading the README file.
+    'author': "Fusion Technologies",
+    'website': "https://fusiontechnologies.ie",
+    'depends': ['payment'],
+    'price': 119.0,
+    'currency': 'EUR',
+    'images': ['static/description/banner.png'],
+    'support': 'hello@fusiontechnologies.ie',
+    'data': [
+        'views/payment_provider_views.xml',
+        'views/payment_revolut_templates.xml',
+
+        'data/payment_provider_data.xml',  # Depends on payment_revolut_templates.xml
+    ],
+    'post_init_hook': 'post_init_hook',
+    'uninstall_hook': 'uninstall_hook',
+    'license': 'OPL-1',
+}
