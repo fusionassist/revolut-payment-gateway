@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 from urllib.parse import urljoin
 
@@ -10,8 +10,8 @@ from odoo.exceptions import ValidationError
 from odoo.addons.payment import utils as payment_utils
 from odoo.addons.payment.const import CURRENCY_MINOR_UNITS
 from odoo.addons.payment.logging import get_payment_logger
-from odoo.addons.payment_revolut import const
-from odoo.addons.payment_revolut.controllers.main import RevolutController
+from odoo.addons.revolut_payment_gateway import const
+from odoo.addons.revolut_payment_gateway.controllers.main import RevolutController
 
 
 _logger = get_payment_logger(__name__, const.SENSITIVE_KEYS)

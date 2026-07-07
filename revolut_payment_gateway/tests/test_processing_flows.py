@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 import hashlib
 import hmac
@@ -10,8 +10,8 @@ from odoo.tests import tagged
 from odoo.tools import mute_logger
 
 from odoo.addons.payment.tests.http_common import PaymentHttpCommon
-from odoo.addons.payment_revolut.controllers.main import RevolutController
-from odoo.addons.payment_revolut.tests.common import RevolutCommon
+from odoo.addons.revolut_payment_gateway.controllers.main import RevolutController
+from odoo.addons.revolut_payment_gateway.tests.common import RevolutCommon
 
 
 @tagged('post_install', '-at_install')
@@ -60,7 +60,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(tx.state, 'done')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_with_invalid_signature_is_rejected(self):
         """ Test that a webhook notification with an invalid signature is rejected. """
         tx = self._create_transaction('redirect')
@@ -72,7 +72,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(tx.state, 'draft')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_with_outdated_timestamp_is_rejected(self):
         """ Test that a webhook notification with a timestamp outside the tolerance window is
         rejected. """
@@ -99,7 +99,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(tx.state, 'done')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_without_signing_secret_is_rejected(self):
         """ Test that webhook notifications are rejected when no signing secret is configured. """
         self.provider.revolut_webhook_secret = False
