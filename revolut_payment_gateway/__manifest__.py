@@ -2,7 +2,7 @@
 
 {
     'name': "Revolut Payment Gateway",
-    'version': '19.0.1.0.1',
+    'version': '19.0.1.0.2',
     'category': 'Accounting/Payment Providers',
     'sequence': 350,
     'summary': "Accept payments via Revolut hosted checkout (cards and Revolut Pay).",
@@ -10,7 +10,7 @@
     'author': "Fusion Technologies",
     'website': "https://fusiontechnologies.ie",
     'depends': ['payment'],
-    'price': 119.0,
+    'price': 79.0,
     'currency': 'EUR',
     'images': ['static/description/banner.png'],
     'support': 'hello@fusiontechnologies.ie',

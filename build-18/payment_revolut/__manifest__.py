@@ -10,7 +10,7 @@
     'author': "Fusion Technologies",
     'website': "https://fusiontechnologies.ie",
     'depends': ['payment'],
-    'price': 119.0,
+    'price': 79.0,
     'currency': 'EUR',
     'images': ['static/description/banner.png'],
     'support': 'hello@fusiontechnologies.ie',
