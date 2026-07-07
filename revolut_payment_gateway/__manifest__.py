@@ -2,7 +2,7 @@
 
 {
     'name': "Revolut Payment Gateway",
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.0.1',
     'category': 'Accounting/Payment Providers',
     'sequence': 350,
     'summary': "Accept payments via Revolut hosted checkout (cards and Revolut Pay).",
