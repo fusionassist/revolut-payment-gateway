@@ -18,3 +18,6 @@ __pycache__/
 # OS cruft
 Thumbs.db
 .DS_Store
+
+# Build artefacts
+/dist/
