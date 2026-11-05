@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 import hashlib
 import hmac
@@ -10,11 +10,11 @@ from odoo.tests import tagged
 from odoo.tools import mute_logger
 
 from odoo.addons.payment.tests.http_common import PaymentHttpCommon
-from odoo.addons.payment_revolut.controllers.main import RevolutController
-from odoo.addons.payment_revolut.tests.common import RevolutCommon
+from odoo.addons.revolut_payment_gateway.controllers.main import RevolutController
+from odoo.addons.revolut_payment_gateway.tests.common import RevolutCommon
 
 _REQUEST = (
-    'odoo.addons.payment_revolut.models.payment_provider.PaymentProvider._revolut_make_request'
+    'odoo.addons.revolut_payment_gateway.models.payment_provider.PaymentProvider._revolut_make_request'
 )
 
 
@@ -57,7 +57,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(tx.state, 'done')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_with_invalid_signature_is_rejected(self):
         tx = self._create_transaction('redirect')
         tx.provider_reference = self.order_id
@@ -68,7 +68,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(tx.state, 'draft')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_with_outdated_timestamp_is_rejected(self):
         tx = self._create_transaction('redirect')
         tx.provider_reference = self.order_id
@@ -89,7 +89,7 @@ class TestProcessingFlows(RevolutCommon, PaymentHttpCommon):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(tx.state, 'done')
 
-    @mute_logger('odoo.addons.payment_revolut.controllers.main')
+    @mute_logger('odoo.addons.revolut_payment_gateway.controllers.main')
     def test_webhook_without_signing_secret_is_rejected(self):
         self.provider.revolut_webhook_secret = False
         tx = self._create_transaction('redirect')

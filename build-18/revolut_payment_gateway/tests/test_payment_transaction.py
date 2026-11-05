@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 from unittest.mock import patch
 
@@ -6,10 +6,10 @@ from odoo.tests import tagged
 from odoo.tools import mute_logger
 
 from odoo.addons.payment import utils as payment_utils
-from odoo.addons.payment_revolut.tests.common import RevolutCommon
+from odoo.addons.revolut_payment_gateway.tests.common import RevolutCommon
 
 _REQUEST = (
-    'odoo.addons.payment_revolut.models.payment_provider.PaymentProvider._revolut_make_request'
+    'odoo.addons.revolut_payment_gateway.models.payment_provider.PaymentProvider._revolut_make_request'
 )
 
 
@@ -96,7 +96,7 @@ class TestPaymentTransaction(RevolutCommon):
         self.assertEqual(tx.state, 'error')
         self.assertIn('insufficient_funds', tx.state_message)
 
-    @mute_logger('odoo.addons.payment_revolut.models.payment_transaction')
+    @mute_logger('odoo.addons.revolut_payment_gateway.models.payment_transaction')
     def test_process_unknown_state_is_error(self):
         tx = self._create_transaction('redirect')
         tx._process_notification_data(

@@ -6,7 +6,7 @@
         <field name="code">revolut</field>
         <field name="state">disabled</field>
         <field name="is_published" eval="False"/>
-        <field name="module_id" ref="base.module_payment_revolut"/>
+        <field name="module_id" ref="base.module_revolut_payment_gateway"/>
         <field name="redirect_form_view_id" ref="redirect_form"/>
         <field name="payment_method_ids"
                eval="[Command.set([
@@ -14,7 +14,7 @@
                          ref('payment.payment_method_revolut_pay'),
                      ])]"
         />
-        <field name="image_128" type="base64" file="payment_revolut/static/description/icon.png"/>
+        <field name="image_128" type="base64" file="revolut_payment_gateway/static/description/icon.png"/>
     </record>
 
     <record id="payment.payment_method_revolut_pay" model="payment.method">

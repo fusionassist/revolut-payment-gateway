@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 from odoo.addons.payment.tests.common import PaymentCommon
 

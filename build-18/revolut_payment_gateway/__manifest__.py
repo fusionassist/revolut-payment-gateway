@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 {
     'name': "Revolut Payment Gateway",
@@ -16,9 +16,9 @@
     'support': 'hello@fusiontechnologies.ie',
     'data': [
         'views/payment_provider_views.xml',
-        'views/payment_revolut_templates.xml',
+        'views/revolut_payment_gateway_templates.xml',
 
-        'data/payment_provider_data.xml',  # Depends on payment_revolut_templates.xml
+        'data/payment_provider_data.xml',  # Depends on revolut_payment_gateway_templates.xml
     ],
     'post_init_hook': 'post_init_hook',
     'uninstall_hook': 'uninstall_hook',

@@ -1,4 +1,4 @@
-# Part of payment_revolut. See LICENSE file for full copyright and licensing details.
+# Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
 # The Merchant API version against which the module was built and tested.
 # See https://developer.revolut.com/docs/guides/merchant/reference/versioning/api-versions
