@@ -136,6 +136,32 @@ OUR differentiators to LEAD the index.html listing with:
   fusionassist (18.0 + 19.0 branches, separate from marketing repo); square icon.png;
   support 30/90 decision; Revolut-mark legal sanity-check.
 
+## Odoo 20 port plan (researched 2026-11-05; 20.0 released ~Sept 2026, current stable)
+Framework delta 19→20 (diffed against odoo/odoo 20.0 payment/payment_stripe/payment_xendit;
+source cached in scratchpad o19/ + o20/). GOOD NEWS: request helpers (_build_request_url/
+_build_request_headers/_build_request_auth/_send_api_request), _compute_feature_support_fields,
+_search_by_reference/_extract_reference/_extract_amount_data, CURRENCY_MINOR_UNITS,
+get_payment_logger — ALL UNCHANGED from 19. So our HTTP/auth/const layer ports verbatim.
+Changes needed (19 module -> 20):
+1. Manifest: version -> 20.0.*; ADD data/payment_method_data.xml (new per-provider convention),
+   listed BEFORE data/payment_provider_data.xml. Define the Revolut payment.method record there.
+2. Async "record -> process" pipeline + write() guard: payment.transaction.write() now raises
+   UserError unless context has payment_safe_write=True. Writes inside _apply_updates and
+   _get_specific_rendering_values are already safe (core sets the ctx); wrap writes in OUR OWN
+   helpers (e.g. failure-path _set_error, freshly-created refund/capture/void child tx) with
+   self.with_context(payment_safe_write=True).
+3. Stop calling _process('revolut', data) -> call self._record(data) everywhere (controllers +
+   refund/capture/void helpers). _process is now _process(self, payment_data) per-tx, cron-run;
+   only override it if intercepting special payloads (we don't need to).
+4. _apply_updates: payment-method lookup self.env['payment.method']._get_from_code(code,mapping)
+   -> self.provider_id._get_pm_from_code(code, mapping).
+5. _get_specific_rendering_values: add 'http_method': 'get' to the returned dict.
+6. Controllers: request.env['payment.transaction'] -> self.env[...]; _process->_record.
+7. Translations (pervasive): remove `from odoo import _`; replace all _("...") with
+   self.env._("...") in models + controllers. (const.py keeps LazyTranslate/_lt.)
+8. Confirm Odoo 20 min Python version before pinning the test env.
+Effort: moderate, mechanical once 18 is done. Build as a 20.0 branch on the same repo/listing.
+
 ## Status (2026-06-12)
 
 Phase 0 ✅ (docs verified+cached, skeleton), Phase 1+2 code ✅ written and reviewed
