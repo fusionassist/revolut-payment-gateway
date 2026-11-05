@@ -1,20 +1,20 @@
 # Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
+import logging
 from urllib.parse import urljoin
 
 from werkzeug import urls
 
-from odoo import _, api, models
+from odoo import _, models
 from odoo.exceptions import ValidationError
 
 from odoo.addons.payment import utils as payment_utils
 from odoo.addons.payment.const import CURRENCY_MINOR_UNITS
-from odoo.addons.payment.logging import get_payment_logger
 from odoo.addons.revolut_payment_gateway import const
 from odoo.addons.revolut_payment_gateway.controllers.main import RevolutController
 
 
-_logger = get_payment_logger(__name__, const.SENSITIVE_KEYS)
+_logger = logging.getLogger(__name__)
 
 
 class PaymentTransaction(models.Model):
@@ -23,41 +23,21 @@ class PaymentTransaction(models.Model):
     def _get_specific_rendering_values(self, processing_values):
         """ Override of `payment` to return Revolut-specific rendering values.
 
-        A Revolut order is created server-side and the customer is redirected to the returned
-        hosted checkout page.
-
         Note: self.ensure_one() from `_get_processing_values`
-
-        :param dict processing_values: The generic and specific processing values of the
-                                       transaction.
-        :return: The dict of provider-specific rendering values.
-        :rtype: dict
         """
         res = super()._get_specific_rendering_values(processing_values)
         if self.provider_code != 'revolut':
             return res
 
         payload = self._revolut_prepare_order_payload()
-        try:
-            order_data = self._send_api_request(
-                'POST', 'orders', json=payload, idempotency_key=self.reference
-            )
-        except ValidationError as error:
-            self._set_error(str(error))
-            return {}
-
-        # The order id is permanent; store it right away so that the return controller and the
-        # webhook handler can fetch the authoritative order state from the API.
+        order_data = self.provider_id._revolut_make_request(
+            'orders', payload=payload, idempotency_key=self.reference
+        )
         self.provider_reference = order_data.get('id')
-
         return {'api_url': order_data.get('checkout_url')}
 
     def _revolut_prepare_order_payload(self):
-        """ Prepare the payload for the order creation request.
-
-        :return: The request payload.
-        :rtype: dict
-        """
+        """ Prepare the payload for the order creation request. """
         base_url = self.provider_id._revolut_get_base_url()
         return_url_params = urls.url_encode({
             'reference': self.reference,
@@ -72,11 +52,8 @@ class PaymentTransaction(models.Model):
             'currency': self.currency_id.name,
             'description': self.reference,
             'capture_mode': 'manual' if self.provider_id.capture_manually else 'automatic',
-            'redirect_url': f'{urljoin(base_url, RevolutController._return_url)}'
-                            f'?{return_url_params}',
-            'merchant_order_data': {
-                'reference': self.reference,
-            },
+            'redirect_url': f'{urljoin(base_url, RevolutController._return_url)}?{return_url_params}',
+            'merchant_order_data': {'reference': self.reference},
         }
         customer = {}
         if self.partner_name:
@@ -87,81 +64,71 @@ class PaymentTransaction(models.Model):
             payload['customer'] = customer
         return payload
 
-    def _send_refund_request(self):
-        """Override of `payment` to send a refund request to Revolut."""
+    def _send_refund_request(self, amount_to_refund=None):
+        """ Override of `payment` to send a refund request to Revolut. """
+        refund_tx = super()._send_refund_request(amount_to_refund=amount_to_refund)
         if self.provider_code != 'revolut':
-            return super()._send_refund_request()
+            return refund_tx
 
-        order_data = self._send_api_request(
-            'POST',
-            f'orders/{self.source_transaction_id.provider_reference}/refund',
-            json={
+        order_data = self.provider_id._revolut_make_request(
+            f'orders/{self.provider_reference}/refund',
+            payload={
                 'amount': payment_utils.to_minor_currency_units(
-                    -self.amount,  # Refund transactions' amount is negative, inverse it.
+                    -refund_tx.amount,  # Refund transactions' amount is negative, inverse it.
+                    refund_tx.currency_id,
+                    arbitrary_decimal_number=CURRENCY_MINOR_UNITS.get(refund_tx.currency_id.name),
+                ),
+                'currency': refund_tx.currency_id.name,
+                'description': _("Refund of %s", self.reference),
+                'merchant_order_data': {'reference': refund_tx.reference},
+            },
+            idempotency_key=refund_tx.reference,
+        )
+        refund_tx._handle_notification_data(
+            'revolut', {'reference': refund_tx.reference, 'order': order_data}
+        )
+        return refund_tx
+
+    def _send_capture_request(self, amount_to_capture=None):
+        """ Override of `payment` to send a capture request to Revolut. """
+        child_capture_tx = super()._send_capture_request(amount_to_capture=amount_to_capture)
+        if self.provider_code != 'revolut':
+            return child_capture_tx
+
+        order_data = self.provider_id._revolut_make_request(
+            f'orders/{self.provider_reference}/capture',
+            payload={
+                'amount': payment_utils.to_minor_currency_units(
+                    amount_to_capture or self.amount,
                     self.currency_id,
                     arbitrary_decimal_number=CURRENCY_MINOR_UNITS.get(self.currency_id.name),
                 ),
-                'currency': self.currency_id.name,
-                'description': _("Refund of %s", self.source_transaction_id.reference),
-                'merchant_order_data': {
-                    'reference': self.reference,  # Sent back as the webhook's ext ref.
-                },
             },
             idempotency_key=self.reference,
         )
+        self._handle_notification_data('revolut', {'reference': self.reference, 'order': order_data})
+        return child_capture_tx
 
-        # The response is a new order object of type 'refund'.
-        self._process('revolut', {'reference': self.reference, 'order': order_data})
-
-    def _send_capture_request(self):
-        """Override of `payment` to send a capture request to Revolut."""
+    def _send_void_request(self, amount_to_void=None):
+        """ Override of `payment` to send a void request to Revolut. """
+        child_void_tx = super()._send_void_request(amount_to_void=amount_to_void)
         if self.provider_code != 'revolut':
-            return super()._send_capture_request()
+            return child_void_tx
 
-        order_data = self._send_api_request(
-            'POST',
-            f'orders/{self.source_transaction_id.provider_reference}/capture',
-            json={
-                'amount': payment_utils.to_minor_currency_units(
-                    self.amount,
-                    self.currency_id,
-                    arbitrary_decimal_number=CURRENCY_MINOR_UNITS.get(self.currency_id.name),
-                ),
-            },
-            idempotency_key=self.reference,
+        order_data = self.provider_id._revolut_make_request(
+            f'orders/{self.provider_reference}/cancel'
         )
-        self._process('revolut', {'reference': self.reference, 'order': order_data})
+        self._handle_notification_data('revolut', {'reference': self.reference, 'order': order_data})
+        return child_void_tx
 
-    def _send_void_request(self):
-        """Override of `payment` to send a void request to Revolut."""
-        if self.provider_code != 'revolut':
-            return super()._send_void_request()
+    def _get_tx_from_notification_data(self, provider_code, notification_data):
+        """ Override of `payment` to find the transaction based on Revolut data. """
+        tx = super()._get_tx_from_notification_data(provider_code, notification_data)
+        if provider_code != 'revolut' or len(tx) == 1:
+            return tx
 
-        order_data = self._send_api_request(
-            'POST', f'orders/{self.source_transaction_id.provider_reference}/cancel'
-        )
-        self._process('revolut', {'reference': self.reference, 'order': order_data})
-
-    @api.model
-    def _search_by_reference(self, provider_code, payment_data):
-        """ Override of `payment` to find the transaction based on Revolut data.
-
-        Webhook notifications carry the Revolut order id and, for payment orders, the merchant
-        reference. The order id takes precedence as it unambiguously identifies the transaction,
-        including refund transactions whose related refund orders don't carry the merchant
-        reference of the source transaction.
-
-        :param str provider_code: The code of the provider handling the transaction.
-        :param dict payment_data: The payment data sent by the provider.
-        :return: The transaction, if found.
-        :rtype: payment.transaction
-        """
-        if provider_code != 'revolut':
-            return super()._search_by_reference(provider_code, payment_data)
-
-        tx = self
-        order_id = payment_data.get('order_id') or payment_data.get('order', {}).get('id')
-        reference = payment_data.get('reference')
+        order_id = notification_data.get('order_id') or notification_data.get('order', {}).get('id')
+        reference = notification_data.get('reference')
         if order_id:
             tx = self.search([
                 ('provider_reference', '=', order_id), ('provider_code', '=', 'revolut'),
@@ -171,41 +138,27 @@ class PaymentTransaction(models.Model):
                 ('reference', '=', reference), ('provider_code', '=', 'revolut'),
             ])
         if not tx:
-            _logger.warning(
-                "No transaction found matching order id %(order_id)s (reference %(ref)s).",
-                {'order_id': order_id, 'ref': reference},
-            )
+            raise ValidationError("Revolut: " + _(
+                "No transaction found matching order %(order)s / reference %(ref)s.",
+                order=order_id, ref=reference,
+            ))
         return tx
 
-    def _extract_amount_data(self, payment_data):
-        """Override of `payment` to extract the amount and currency from the payment data."""
+    def _process_notification_data(self, notification_data):
+        """ Override of `payment` to process the transaction based on Revolut data.
+
+        Note: self.ensure_one()
+        """
+        self.ensure_one()
+
+        super()._process_notification_data(notification_data)
         if self.provider_code != 'revolut':
-            return super()._extract_amount_data(payment_data)
+            return
 
-        order_data = payment_data.get('order', {})
-        currency_code = order_data.get('currency', '')
-        amount = payment_utils.to_major_currency_units(
-            order_data.get('amount', 0),
-            self.currency_id,
-            arbitrary_decimal_number=CURRENCY_MINOR_UNITS.get(currency_code),
-        )
-        return {
-            'amount': amount,
-            'currency_code': currency_code,
-            'precision_digits': CURRENCY_MINOR_UNITS.get(currency_code),
-        }
+        order_data = notification_data.get('order', {})
 
-    def _apply_updates(self, payment_data):
-        """Override of `payment` to update the transaction based on the payment data."""
-        if self.provider_code != 'revolut':
-            return super()._apply_updates(payment_data)
-
-        order_data = payment_data.get('order', {})
-
-        # Update the provider reference. For refund transactions, the reference is the id of the
-        # refund order created by Revolut, not the id of the source order. Capture and void child
-        # transactions must not copy the source order id: the provider reference must stay unique
-        # per order for webhook notifications to resolve to a single transaction.
+        # Update the provider reference. Capture/void child transactions must not copy the source
+        # order id, so that webhook notifications resolve to a single transaction.
         if order_data.get('id') and (
             not self.provider_reference or order_data.get('type') == 'refund'
         ):
@@ -221,9 +174,7 @@ class PaymentTransaction(models.Model):
             payment_method = self.env['payment.method']._get_from_code(payment_method_type)
             self.payment_method_id = payment_method or self.payment_method_id
 
-        # Update the payment state. The order state is the source of truth: payment-level events
-        # such as a declined attempt don't fail the order, as the customer can retry the payment
-        # from the hosted checkout page until the order expires.
+        # Update the payment state from the authoritative order state.
         state = order_data.get('state')
         if not state:
             self._set_error(_("Received data with missing order state."))
@@ -232,13 +183,9 @@ class PaymentTransaction(models.Model):
         elif state in const.PAYMENT_STATUS_MAPPING['authorized']:
             if self.provider_id.capture_manually:
                 self._set_authorized()
-            # In automatic capture mode, 'authorised' is a transient state; the order completes
-            # without further action and the transaction is updated when it does.
+            # In automatic capture mode, 'authorised' is transient; the order completes on its own.
         elif state in const.PAYMENT_STATUS_MAPPING['done']:
             self._set_done()
-
-            # Immediately post-process the transaction if it is a refund, as the post-processing
-            # will not be triggered by a customer browsing the transaction from the portal.
             if self.operation == 'refund':
                 self.env.ref('payment.cron_post_process_payment_tx')._trigger()
         elif state in const.PAYMENT_STATUS_MAPPING['cancel']:

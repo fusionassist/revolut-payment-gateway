@@ -15,11 +15,10 @@ class RevolutCommon(PaymentCommon):
             'revolut_webhook_id': 'dummy-webhook-id',
         })
         cls.provider = cls.revolut
+        cls.currency = cls.currency_euro
         cls.amount = 70.34
-        cls.currency = cls._enable_currency('EUR')
 
         cls.order_id = '0adc0e3c-ab44-4f33-bcc0-534ded7354ce'
-
         cls.webhook_payload = {
             'event': 'ORDER_COMPLETED',
             'order_id': cls.order_id,

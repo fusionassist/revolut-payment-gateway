@@ -17,9 +17,6 @@
         <field name="image_128" type="base64" file="revolut_payment_gateway/static/description/icon.png"/>
     </record>
 
-    <!-- The core record restricts Revolut Pay to the United Kingdom, but Revolut Pay is available
-         to customers across the EEA and beyond. The hosted checkout page decides which payment
-         methods to surface, so no country restriction is needed on the Odoo side. -->
     <record id="payment.payment_method_revolut_pay" model="payment.method">
         <field name="supported_country_ids" eval="[Command.clear()]"/>
     </record>

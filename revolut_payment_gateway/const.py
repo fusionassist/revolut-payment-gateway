@@ -1,7 +1,5 @@
 # Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
-from odoo.addons.payment.const import SENSITIVE_KEYS as PAYMENT_SENSITIVE_KEYS
-
 # The Merchant API version against which the module was built and tested.
 # See https://developer.revolut.com/docs/guides/merchant/reference/versioning/api-versions
 API_VERSION = '2026-03-12'
@@ -14,9 +12,6 @@ API_URLS = {
 }
 
 # The currencies supported for card payments on the hosted checkout page, in ISO 4217 format.
-# Revolut Pay supports a wider set, but the provider-level filter must hold for all payment
-# methods surfaced on the hosted page, so the card list is the common denominator.
-# See https://help.revolut.com/business/help/merchant-accounts/payments/in-which-currencies-can-i-accept-payments/
 SUPPORTED_CURRENCIES = [
     'AUD',
     'CAD',
@@ -77,7 +72,3 @@ HANDLED_WEBHOOK_EVENTS = [
 # The maximum age of an incoming webhook notification, in seconds, as recommended by Revolut.
 # The `Revolut-Request-Timestamp` header is expressed in milliseconds.
 WEBHOOK_AGE_TOLERANCE = 5 * 60
-
-# The keys that are sensitive and should not be logged.
-SENSITIVE_KEYS = {'token', 'checkout_url', 'signing_secret'}
-PAYMENT_SENSITIVE_KEYS.update(SENSITIVE_KEYS)  # Add Revolut-specific keys to the global set.

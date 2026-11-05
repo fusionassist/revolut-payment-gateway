@@ -1,16 +1,19 @@
 # Part of revolut_payment_gateway. See LICENSE file for full copyright and licensing details.
 
+import logging
+import pprint
 from urllib.parse import urljoin, urlsplit, urlunsplit
+
+import requests
 
 from odoo import _, fields, models
 from odoo.exceptions import ValidationError
 
-from odoo.addons.payment.logging import get_payment_logger
 from odoo.addons.revolut_payment_gateway import const
 from odoo.addons.revolut_payment_gateway.controllers.main import RevolutController
 
 
-_logger = get_payment_logger(__name__, const.SENSITIVE_KEYS)
+_logger = logging.getLogger(__name__)
 
 
 class PaymentProvider(models.Model):
@@ -23,19 +26,15 @@ class PaymentProvider(models.Model):
         string="Revolut Secret API Key",
         help="The Merchant API secret key of the matching environment (sandbox in test mode).",
         required_if_provider='revolut',
-        copy=False,
         groups='base.group_system',
     )
     revolut_webhook_secret = fields.Char(
         string="Revolut Webhook Signing Secret",
-        help="Set automatically when the webhook is registered. Only edit it manually if the"
-             " webhook was created outside of Odoo.",
-        copy=False,
+        help="Set automatically when the webhook is registered.",
         groups='base.group_system',
     )
     revolut_webhook_id = fields.Char(
         string="Revolut Webhook ID",
-        copy=False,
         groups='base.group_system',
         readonly=True,
     )
@@ -50,6 +49,8 @@ class PaymentProvider(models.Model):
             'support_refund': 'partial',
         })
 
+    # === BUSINESS METHODS - PAYMENT FLOW === #
+
     def _get_supported_currencies(self):
         """ Override of `payment` to return the supported currencies. """
         supported_currencies = super()._get_supported_currencies()
@@ -59,103 +60,19 @@ class PaymentProvider(models.Model):
             )
         return supported_currencies
 
-    # === CRUD METHODS === #
-
     def _get_default_payment_method_codes(self):
         """ Override of `payment` to return the default payment method codes. """
-        self.ensure_one()
+        default_codes = super()._get_default_payment_method_codes()
         if self.code != 'revolut':
-            return super()._get_default_payment_method_codes()
+            return default_codes
         return const.DEFAULT_PAYMENT_METHOD_CODES
-
-    # === ACTION METHODS === #
-
-    def action_revolut_register_webhook(self):
-        """ Create or update the webhook on Revolut and store its id and signing secret.
-
-        :return: A client action displaying the result of the registration.
-        :rtype: dict
-        """
-        self.ensure_one()
-
-        webhook_url = urljoin(self._revolut_get_base_url(), RevolutController._webhook_url)
-        payload = {
-            'url': webhook_url,
-            'events': const.HANDLED_WEBHOOK_EVENTS,
-        }
-        message = None
-        if self.revolut_webhook_id:  # A webhook was already registered; update it in place.
-            try:
-                self._send_api_request(
-                    'PATCH', f'webhooks/{self.revolut_webhook_id}', json=payload
-                )
-                message = _("The webhook was successfully updated to %s.", webhook_url)
-            except ValidationError:
-                # The webhook might have been deleted on Revolut's side; discard the stale id
-                # and fall through to register a fresh webhook.
-                _logger.warning(
-                    "Failed to update webhook %s on Revolut; registering a new one.",
-                    self.revolut_webhook_id,
-                )
-                self.revolut_webhook_id = False
-        if not self.revolut_webhook_id:
-            webhook_data = self._send_api_request('POST', 'webhooks', json=payload)
-            self.revolut_webhook_id = webhook_data.get('id')
-            if webhook_data.get('signing_secret'):
-                self.revolut_webhook_secret = webhook_data['signing_secret']
-            message = _("The webhook was successfully registered at %s.", webhook_url)
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'message': message,
-                'sticky': False,
-                'type': 'success',
-            },
-        }
-
-    def action_revolut_unregister_webhook(self):
-        """ Delete the webhook on Revolut and clear the related fields.
-
-        :return: A client action displaying the result of the deletion.
-        :rtype: dict
-        """
-        self.ensure_one()
-
-        if self.revolut_webhook_id:
-            try:
-                self._send_api_request('DELETE', f'webhooks/{self.revolut_webhook_id}')
-            except ValidationError:
-                _logger.warning(
-                    "Failed to delete webhook %s on Revolut; clearing the local fields anyway.",
-                    self.revolut_webhook_id,
-                )
-        self.revolut_webhook_id = False
-        self.revolut_webhook_secret = False
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'message': _("The webhook was deleted."),
-                'sticky': False,
-                'type': 'success',
-            },
-        }
-
-    # === BUSINESS METHODS === #
 
     def _revolut_get_base_url(self):
         """ Return the instance base URL, forcing HTTPS for public hosts.
 
-        Revolut requires a public HTTPS endpoint to deliver webhooks — it does not follow
-        redirects on POST, so a webhook registered over http:// that the reverse proxy
-        301-redirects to https:// is silently dropped. The hosted checkout likewise only
-        redirects back to a public host. Behind a reverse proxy, `get_base_url` can report
-        an `http` scheme even when the public site is served over HTTPS, so the scheme is
-        upgraded for non-local hosts.
-
-        :return: The base URL with an https scheme for public hosts.
-        :rtype: str
+        Revolut requires a public HTTPS endpoint to deliver webhooks (it does not follow redirects
+        on POST). Behind a reverse proxy, `get_base_url` can report an `http` scheme even when the
+        public site is HTTPS, so the scheme is upgraded for non-local hosts.
         """
         self.ensure_one()
         base_url = self.get_base_url()
@@ -164,20 +81,22 @@ class PaymentProvider(models.Model):
             base_url = urlunsplit(parts._replace(scheme='https'))
         return base_url
 
-    # === REQUEST HELPERS === #
+    def _revolut_make_request(self, endpoint, payload=None, method='POST', idempotency_key=None):
+        """ Make a request to the Revolut Merchant API and return the JSON content of the response.
 
-    def _build_request_url(self, endpoint, **kwargs):
-        """Override of `payment` to build the request URL."""
-        if self.code != 'revolut':
-            return super()._build_request_url(endpoint, **kwargs)
-        return urljoin(const.API_URLS[self.state], endpoint)
+        Note: self.ensure_one()
 
-    def _build_request_headers(self, method, endpoint, payload, *, idempotency_key=None, **kwargs):
-        """Override of `payment` to build the request headers."""
-        if self.code != 'revolut':
-            return super()._build_request_headers(
-                method, endpoint, payload, idempotency_key=idempotency_key, **kwargs
-            )
+        :param str endpoint: The endpoint to be reached by the request.
+        :param dict payload: The JSON payload of the request.
+        :param str method: The HTTP method of the request.
+        :param str idempotency_key: The idempotency key to send with a mutating request.
+        :return: The JSON-formatted content of the response (empty dict for 204 responses).
+        :rtype: dict
+        :raise ValidationError: If an HTTP error occurs.
+        """
+        self.ensure_one()
+
+        url = urljoin(const.API_URLS[self.state], endpoint)
         headers = {
             'Authorization': f'Bearer {self.revolut_secret_key}',
             'Revolut-Api-Version': const.API_VERSION,
@@ -185,19 +104,79 @@ class PaymentProvider(models.Model):
         }
         if idempotency_key:
             headers['Idempotency-Key'] = idempotency_key
-        return headers
-
-    def _parse_response_content(self, response, **kwargs):
-        """Override of `payment` to handle empty responses, e.g. of webhook deletions."""
-        if self.code != 'revolut':
-            return super()._parse_response_content(response, **kwargs)
+        try:
+            response = requests.request(method, url, json=payload, headers=headers, timeout=10)
+            response.raise_for_status()
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            _logger.exception("Unable to reach Revolut endpoint at %s", url)
+            raise ValidationError(
+                "Revolut: " + _("Could not establish the connection to the API.")
+            )
+        except requests.exceptions.HTTPError as err:
+            try:
+                error_message = err.response.json().get('message', err.response.text)
+            except Exception:  # noqa: BLE001 - error body may not be JSON.
+                error_message = err.response.text
+            _logger.exception("Invalid API request at %s with data:\n%s", url, pprint.pformat(payload))
+            raise ValidationError(
+                "Revolut: " + _(
+                    "The communication with the API failed. Revolut gave us the following"
+                    " information: '%s'", error_message
+                )
+            )
         return response.json() if response.content else {}
 
-    def _parse_response_error(self, response):
-        """Override of `payment` to parse the error message."""
-        if self.code != 'revolut':
-            return super()._parse_response_error(response)
-        try:
-            return response.json().get('message', response.text)
-        except ValueError:
-            return response.text
+    # === ACTION METHODS === #
+
+    def action_revolut_register_webhook(self):
+        """ Create or update the webhook on Revolut and store its id and signing secret. """
+        self.ensure_one()
+
+        webhook_url = urljoin(self._revolut_get_base_url(), RevolutController._webhook_url)
+        payload = {'url': webhook_url, 'events': const.HANDLED_WEBHOOK_EVENTS}
+        message = None
+        if self.revolut_webhook_id:
+            try:
+                self._revolut_make_request(
+                    f'webhooks/{self.revolut_webhook_id}', payload=payload, method='PATCH'
+                )
+                message = _("The webhook was successfully updated to %s.", webhook_url)
+            except ValidationError:
+                _logger.warning(
+                    "Failed to update webhook %s on Revolut; registering a new one.",
+                    self.revolut_webhook_id,
+                )
+                self.revolut_webhook_id = False
+        if not self.revolut_webhook_id:
+            webhook_data = self._revolut_make_request('webhooks', payload=payload)
+            self.revolut_webhook_id = webhook_data.get('id')
+            if webhook_data.get('signing_secret'):
+                self.revolut_webhook_secret = webhook_data['signing_secret']
+            message = _("The webhook was successfully registered at %s.", webhook_url)
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {'message': message, 'sticky': False, 'type': 'success'},
+        }
+
+    def action_revolut_unregister_webhook(self):
+        """ Delete the webhook on Revolut and clear the related fields. """
+        self.ensure_one()
+
+        if self.revolut_webhook_id:
+            try:
+                self._revolut_make_request(
+                    f'webhooks/{self.revolut_webhook_id}', method='DELETE'
+                )
+            except ValidationError:
+                _logger.warning(
+                    "Failed to delete webhook %s on Revolut; clearing local fields anyway.",
+                    self.revolut_webhook_id,
+                )
+        self.revolut_webhook_id = False
+        self.revolut_webhook_secret = False
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {'message': _("The webhook was deleted."), 'sticky': False, 'type': 'success'},
+        }
